@@ -191,7 +191,7 @@ R_Freq = reshape(R_Freq,1,[]).';
     %   The MUSIC spectrum
             end
             A1 = kron(A,B);
-            A1 = exp(-j*2*pi*tau(j)+(-j*2*pi*A1)).';
+            A1 = exp(-j*2*pi*fc*tau(j)+(-j*2*pi*A1)).';
             PMUSIC(i,j) = real(A1'*Pn*Pn'*A1);
 %           PMUSIC(i,j)= ((A1*Pn).^2);
 %          PMUSIC(i,j)= N/abs(diag(A1'*Pn*A1));

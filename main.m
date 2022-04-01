@@ -90,12 +90,11 @@ for q=1:1:m
     qerr1(q) = Carr(q)-y_tx(q);
     
 end
-c = 3e8;
 y_tx = Carr;
-NCarr = delayseq(y_tx',0)';
+NCarr = delayseq(y_tx',30)';
 rx_carr = NCarr;
-         %  lambda (λ)
-            wavelength = 3e8/fc; 
+c = physconst('LightSpeed');
+lam = c/fc;
          %  Element Spacing
             d = 0.5;
          %  Number of Elements   
@@ -103,20 +102,21 @@ rx_carr = NCarr;
             theta = 0;
             beta = 2*pi;
             %beta=2*pi/wavelength; 
-            phi=beta*fc*0.5*sin(theta*pi/180);
+            phi=beta*(d/lam)*sin(theta*pi/180);
             M = length(theta);
          %  Steering Vectors
             for i=1:M
                 for k=1:N
-                    SteeringVector(k,i)= exp((k-1)*-1i*phi(i));
+                    SteeringVector(k,i)= exp((k-1)*1i*phi(i));
                 end
             end
+            
 %--------------Channel Modeling ----------------
 % AWGN and other channel impairments could be added here. AWGN is added for
 % inllustrative purpose. Further impairments such as doppler effect,
 % Rayleigh fading may be added.
- snr = 2;
- rx_carr = awgn(y_tx,snr, 'measured');
+% snr = 2;
+% rx_carr = awgn(y_tx,snr, 'measured');
 %%-----------------Receiver---------------------- 
 %I-Q or vector down-conversion to recover the OFDM baseband signal from the
 %modulated RF carrier
@@ -175,24 +175,21 @@ R_Freq = reshape(R_Freq,1,[]).';
     Ps = V(:,1:M)*V(:,1:M)';
 %   Noise Subspace
     Pn = V(:,1+M:N)*V(:,1+M:N)';
-    theta1=[0:90];
-    tau=[0:1e-8:1e-5];
-%   Search in 1-D space
+    theta1=[0:180];
+    tau=[0:1e-9:1e-6];
+    for l = 1:52
+        A(:,l) = l*deltaF;                
+    % A = exp(-1i*2*pi*fc*tau(j));
+    % B(:,l) = exp(-1i*2*pi*deltaF*l*(d/c*sin((i)*pi/180)*[0:N-1]'));
+    % A1(:,l) = exp(-1i*2*pi*(fc+deltaF*l)*(d/c*sin((i)*pi/180)*[0:N-1]'+(tau(j))));
+    % The MUSIC spectrum
+    end
     for i=1:length(theta1)
         for j=1:length(tau)
-            for l = 1:52
-                A1 = [];
-                A(:,l) = l*deltaF;
-                B = 0.5*sin((i)*pi/180)*[0:N-1];
-                
-                %               A = exp(-1i*2*pi*fc*tau(j));
- %               B(:,l) = exp(-1i*2*pi*deltaF*l*(d/c*sin((i)*pi/180)*[0:N-1]'));
- %               A1(:,l) = exp(-1i*2*pi*(fc+deltaF*l)*(d/c*sin((i)*pi/180)*[0:N-1]'+(tau(j))));
-    %   The MUSIC spectrum
-            end
+            B = (0.5/lam)*sin((i)*pi/180)*[0:N-1];
             A1 = kron(A,B);
-            A1 = exp(-j*2*pi*fc*tau(j)+(-j*2*pi*A1)).';
-            PMUSIC(i,j) = real(A1'*Pn*Pn'*A1);
+            A1 = (exp(1i*2*pi*fc*tau(j)+(1i*2*pi*A1))).';
+            PMUSIC(i,j) = 1/real(A1'*Pn*Pn'*A1);
 %           PMUSIC(i,j)= ((A1*Pn).^2);
 %          PMUSIC(i,j)= N/abs(diag(A1'*Pn*A1));
         end
@@ -206,15 +203,3 @@ R_Freq = reshape(R_Freq,1,[]).';
     [I1,I2] = ind2sub(size(PMUSIC),I);
     deg = I1-1;
     del = I2-1;
-
-    figure(1);
-    [X,Y] = meshgrid(theta1,tau);
-    surf(X,Y,10*log10(PMUSIC)')
-    shading interp 
-    colorbar    
-    xlabel('Angle [degrees]');
-    ylabel('Delay (s)');
-    zlabel('PMUSIC [dB]');
-    
-    degrees = deg;
-    delay = del;

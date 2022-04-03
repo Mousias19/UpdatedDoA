@@ -91,7 +91,7 @@ for q=1:1:m
     
 end
 y_tx = Carr;
-NCarr = circshift(y_tx,300);
+NCarr = circshift(y_tx,0);
 %NCarr = delayseq(y_tx',30)';
 rx_carr = NCarr;
 c = physconst('LightSpeed');
@@ -99,7 +99,7 @@ lam = c/fc;
          %  Element Spacing
             d = 0.5;
          %  Number of Elements   
-            N = 2;
+            N = 4;
             theta = 0;
             beta = 2*pi;
             %beta=2*pi/wavelength; 
@@ -116,8 +116,8 @@ lam = c/fc;
 % AWGN and other channel impairments could be added here. AWGN is added for
 % inllustrative purpose. Further impairments such as doppler effect,
 % Rayleigh fading may be added.
- snr = 2;
- rx_carr = awgn(y_tx,snr, 'measured');
+snr = 20;
+rx_carr = awgn(rx_carr,snr, 'measured');
 %%-----------------Receiver---------------------- 
 %I-Q or vector down-conversion to recover the OFDM baseband signal from the
 %modulated RF carrier
@@ -150,23 +150,26 @@ for k=1:N
     end
 end
 
-r1 = reshape(r,[80,2]).';
+r1 = reshape(r,[80,N]).';
 %Removing cyclic prefix 
 r_Parallel1 = r1(:,(Ncp + 1:(64 + Ncp))); 
 %FFT Block 
 r_Time(1,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(1,:))); 
 r_Time(2,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(2,:))); 
+r_Time(3,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(3,:))); 
+r_Time(4,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(4,:))); 
 %r_Time = sqrt(Nst)/ 64*(fft(r_Parallel(2,:)));
 %Extracting the data carriers from the FFT output 
-R_Freq = r_Time(:,[( 2: Nst/ 2 + 1) (Nst/ 2 + 13: Nst + 12)]);
-R_Freq = reshape(R_Freq,1,[]).';
+R_Freq1 = r_Time(:,[( 2: Nst/ 2 + 1) (Nst/ 2 + 13: Nst + 12)]);
+R_Freq = reshape(R_Freq1,1,[]);
+
 %-------------------------------------------- 
 %   MUSIC
     %Ap = 1;
     %B = exp(rand(1,1000)*2*pi*1i);
     %Rb = cov(B);
 %   Auto-correlation matrix
-    Rxx = R_Freq*R_Freq'/52;
+    Rxx = R_Freq'*R_Freq/52;
 %   eigenvalue decomposition
     [Vi,Li] = eig(Rxx);
 %   sort in descending order
@@ -177,25 +180,30 @@ R_Freq = reshape(R_Freq,1,[]).';
 %   Noise Subspace
     Pn = V(:,1+M:N)*V(:,1+M:N)';
     theta1=[0:180];
-    tau=[0:1000000:1000000000];
-    for l = 1:52
-        A(:,l) = l*deltaF;                
+    tau=[0];
+    %for l = 1:52
+    %    D(:,l) = l*deltaF;                
     % A = exp(-1i*2*pi*fc*tau(j));
     % B(:,l) = exp(-1i*2*pi*deltaF*l*(d/c*sin((i)*pi/180)*[0:N-1]'));
     % A1(:,l) = exp(-1i*2*pi*(fc+deltaF*l)*(d/c*sin((i)*pi/180)*[0:N-1]'+(tau(j))));
     % The MUSIC spectrum
-    end
+    %end
     for i=1:length(theta1)
-        B = exp(2*pi*-1i*(d/lam)*sin((i)*pi/180)*[0:N-1]);
-        for j=1:length(tau)
-            for l = 1:52
-                A(:,l) = exp(2*pi*-1i*l*deltaF*tau(j));
-            end
-            A1 = kron(A,B).';
-            PMUSIC(i,j) = 1/real(A1'*Pn*Pn'*A1);
-%           PMUSIC(i,j)= ((A1*Pn).^2);
-%          PMUSIC(i,j)= N/abs(diag(A1'*Pn*A1));
+        phi1=beta*(d/lam)*sin(theta1(i)*pi/180);
+        B =zeros([N 1]);
+        for k=1:N
+            B(k,1)= (exp((k-1)*-1i*phi1));
         end
+        B = B.';
+%       for j=1:length(tau)
+           for l = 1:52
+                A(:,l) = exp(2*pi*-1i*l*deltaF*tau).';
+           end
+            A1 = kron(B,A).';
+%           PMUSIC(i,j) = real(A1'*A1)/real(A1'*Pn*A1);
+%           PMUSIC(i,j)= ((A1*Pn).^2);
+        PMUSIC(i)= 1/abs((A1'*Pn*A1));
+ %       end
     end
     
 
@@ -206,15 +214,8 @@ R_Freq = reshape(R_Freq,1,[]).';
     [I1,I2] = ind2sub(size(PMUSIC),I);
     deg = I1-1;
     del = I2-1;
-
     figure(1);
-    [X,Y] = meshgrid(theta1,tau);
-    surf(X,Y,10*log10(PMUSIC)')
-    shading interp 
-    colorbar    
+    plot(theta1,10*log10( PMUSIC));
+    title('MUSIC spectrum');
     xlabel('Angle [degrees]');
-    ylabel('Delay (s)');
-    zlabel('PMUSIC [dB]');
-    
-    degrees = deg;
-    delay = del;
+    ylabel('PMUSIC [dB]');   

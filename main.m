@@ -91,16 +91,17 @@ for q=1:1:m
     
 end
 y_tx = Carr;
-NCarr = circshift(y_tx,0);
-%NCarr = delayseq(y_tx',30)';
+delay = 5;
+NCarr = circshift(y_tx,delay);
+%NCarr = delayseq(y_tx',delay)';
 rx_carr = NCarr;
 c = physconst('LightSpeed');
 lam = c/fc;
          %  Element Spacing
-            d = 0.5;
+            d = lam;
          %  Number of Elements   
             N = 4;
-            theta = 0;
+            theta = 35;
             beta = 2*pi;
             %beta=2*pi/wavelength; 
             phi=beta*(d/lam)*sin(theta*pi/180);
@@ -108,7 +109,7 @@ lam = c/fc;
          %  Steering Vectors
             for i=1:M
                 for k=1:N
-                    SteeringVector(k,i)= exp((k-1)*-1i*phi(i));
+                    SteeringVector(k,i)= exp((k-1)*1i*phi(i));
                 end
             end
             
@@ -116,8 +117,8 @@ lam = c/fc;
 % AWGN and other channel impairments could be added here. AWGN is added for
 % inllustrative purpose. Further impairments such as doppler effect,
 % Rayleigh fading may be added.
-snr = 20;
-rx_carr = awgn(rx_carr,snr, 'measured');
+%snr = 200;
+%rx_carr = awgn(rx_carr,snr, 'measured');
 %%-----------------Receiver---------------------- 
 %I-Q or vector down-conversion to recover the OFDM baseband signal from the
 %modulated RF carrier
@@ -142,7 +143,7 @@ for k=1:N
     Z_qd=rx_carr(k,(n-1)*length(t)+1:n*length(t)).*sin(2*pi*fc*t);
     %above line indicat multiplication ofreceived & Quadphase carred signal
     
-    Z_qd_intg=(trapz(t,Z_qd(1,:)))*(2/Tsym);%integration using trapizodial rull
+    Z_qd_intg=(trapz(t,Z_qd(1,:)))*(2/Tsym);%integration using trapizodial rule
         
     r_imag =  Z_qd_intg;   
         
@@ -160,8 +161,14 @@ r_Time(3,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(3,:)));
 r_Time(4,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(4,:))); 
 %r_Time = sqrt(Nst)/ 64*(fft(r_Parallel(2,:)));
 %Extracting the data carriers from the FFT output 
-R_Freq1 = r_Time(:,[( 2: Nst/ 2 + 1) (Nst/ 2 + 13: Nst + 12)]);
+R_Freq1 = r_Time(:,[( 2: Nst/ 2 + 1) (Nst/ 2 + 13: Nst + 12)]).';
+%s1 = circshift(s,1);
+CSI(:,1)= R_Freq1(:,1)./s.';
+CSI(:,2)= R_Freq1(:,2)./s.';
+CSI(:,3)= R_Freq1(:,3)./s.';
+CSI(:,4)= R_Freq1(:,4)./s.';
 R_Freq = reshape(R_Freq1,1,[]);
+CSI = reshape(CSI,1,[]);
 
 %-------------------------------------------- 
 %   MUSIC
@@ -169,7 +176,7 @@ R_Freq = reshape(R_Freq1,1,[]);
     %B = exp(rand(1,1000)*2*pi*1i);
     %Rb = cov(B);
 %   Auto-correlation matrix
-    Rxx = R_Freq'*R_Freq/52;
+    Rxx = CSI'*CSI/52;
 %   eigenvalue decomposition
     [Vi,Li] = eig(Rxx);
 %   sort in descending order
@@ -179,43 +186,65 @@ R_Freq = reshape(R_Freq1,1,[]);
     Ps = V(:,1:M)*V(:,1:M)';
 %   Noise Subspace
     Pn = V(:,1+M:N)*V(:,1+M:N)';
-    theta1=[0:180];
-    tau=[0];
+    theta1=[0:90];
+    tau=[0:1e-9:1e-8];
     %for l = 1:52
-    %    D(:,l) = l*deltaF;                
+    % D(:,l) = l*deltaF;                
     % A = exp(-1i*2*pi*fc*tau(j));
     % B(:,l) = exp(-1i*2*pi*deltaF*l*(d/c*sin((i)*pi/180)*[0:N-1]'));
     % A1(:,l) = exp(-1i*2*pi*(fc+deltaF*l)*(d/c*sin((i)*pi/180)*[0:N-1]'+(tau(j))));
     % The MUSIC spectrum
     %end
     for i=1:length(theta1)
-        phi1=beta*(d/lam)*sin(theta1(i)*pi/180);
+        phi1=2*pi*(d/lam)*sin(theta1(i)*pi/180);
         B =zeros([N 1]);
         for k=1:N
-            B(k,1)= (exp((k-1)*-1i*phi1));
+            B(k,1)= (exp((k-1)*1i*phi1));
         end
         B = B.';
-%       for j=1:length(tau)
+       for j=1:length(tau)
            for l = 1:52
-                A(:,l) = exp(2*pi*-1i*l*deltaF*tau).';
+                A(:,l) = exp(2*pi*-1i*l*deltaF*tau(j)).';
            end
-            A1 = kron(B,A).';
+            A1 = kron(B,A)';
 %           PMUSIC(i,j) = real(A1'*A1)/real(A1'*Pn*A1);
-%           PMUSIC(i,j)= ((A1*Pn).^2);
-        PMUSIC(i)= 1/abs((A1'*Pn*A1));
- %       end
+%            PMUSIC(i,j)= ((A1*Pn).^2);
+             PMUSIC(i,j)= 1/abs((A1'*Pn*A1));
+       end
     end
     
 
     [resSorted, orgInd] = sort(PMUSIC,'descend');
-    DOAs = orgInd(1:M, 1);
+    DOAs = orgInd(1:M,1);
     
     [C,I] = max(PMUSIC(:));
     [I1,I2] = ind2sub(size(PMUSIC),I);
     deg = I1-1;
     del = I2-1;
+%     figure(1);
+%     plot(theta1,10*log10( PMUSIC));
+%     title('MUSIC spectrum');
+%     xlabel('Angle [degrees]');
+%     ylabel('PMUSIC [dB]');   
     figure(1);
-    plot(theta1,10*log10( PMUSIC));
-    title('MUSIC spectrum');
+    [X,Y] = meshgrid(theta1,tau);
+    surf(X,Y,(PMUSIC)')
+    shading interp 
+    colorbar    
     xlabel('Angle [degrees]');
-    ylabel('PMUSIC [dB]');   
+    ylabel('Delay (s)');
+    zlabel('PMUSIC');
+    
+    degrees = deg;
+    delay = del;
+
+% %BPSK demodulation / Constellation Demapper.Force + ve value --> 1, -ve value --> -1 
+% R_Freq( R_Freq > 0) = + 1; 
+% R_Freq( R_Freq < 0) = -1; 
+% s_cap = R_Freq; 
+% numErrors = sum( abs( s_cap-s)/ 2); %Count number of errors 
+% R_Freq( R_Freq < 0) = 0
+% s(s < 0) = 0;
+% [numErrors, ber] = biterr(s, R_Freq);
+% fprintf('\nThe bit error rate = %5.2e, based on %d errors\n', ...
+%     ber, numErrors)

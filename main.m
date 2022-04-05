@@ -91,17 +91,16 @@ for q=1:1:m
     
 end
 y_tx = Carr;
-delay = 5;
-NCarr = circshift(y_tx,delay);
+%NCarr = circshift(y_tx,delay);
 %NCarr = delayseq(y_tx',delay)';
-rx_carr = NCarr;
+rx_carr = y_tx;
 c = physconst('LightSpeed');
 lam = c/fc;
          %  Element Spacing
             d = lam;
          %  Number of Elements   
             N = 4;
-            theta = 35;
+            theta = [35,25];
             beta = 2*pi;
             %beta=2*pi/wavelength; 
             phi=beta*(d/lam)*sin(theta*pi/180);
@@ -122,17 +121,19 @@ lam = c/fc;
 %%-----------------Receiver---------------------- 
 %I-Q or vector down-conversion to recover the OFDM baseband signal from the
 %modulated RF carrier
-
-rx_carr = SteeringVector*rx_carr;
+%O = exp(2*pi*-1i*2e-8*53*325000);
+rx_carr = SteeringVector.*rx_carr;
 r = [];
 r_real= [];
 r_imag = [];
 
+snr = 15;
+rx_carr = awgn(rx_carr,snr, 'measured');
 for k=1:N
     for n=1:1:length(ofdm_signal)
- 
+ delay = 1e-7;
     %%XXXXXX inphase coherent dector XXXXXXX
-    Z_in=rx_carr(k,(n-1)*length(t)+1:n*length(t)).*cos(2*pi*fc*t); %extract a period of the 
+    Z_in=rx_carr(k,(n-1)*length(t)+1:n*length(t)).*cos(2*pi*fc*(t)); %extract a period of the 
     %signal received and multiply the received signal with the cosine component of the carrier signal
     
     Z_in_intg=(trapz(t,Z_in(1,:)))*(2/Tsym);% integration using Trapizodial rule 
@@ -140,7 +141,7 @@ for k=1:N
     r_real=Z_in_intg;
     
     %%XXXXXX Quadrature coherent dector XXXXXX
-    Z_qd=rx_carr(k,(n-1)*length(t)+1:n*length(t)).*sin(2*pi*fc*t);
+    Z_qd=rx_carr(k,(n-1)*length(t)+1:n*length(t)).*sin(2*pi*fc*(t));
     %above line indicat multiplication ofreceived & Quadphase carred signal
     
     Z_qd_intg=(trapz(t,Z_qd(1,:)))*(2/Tsym);%integration using trapizodial rule
@@ -150,7 +151,14 @@ for k=1:N
     r=[r  r_real+1i*(r_imag)]; % Received Data vector
     end
 end
-
+for k = 1:4
+           for l = 1:26
+                arr(l,k) = exp(2*pi*-1i*l*deltaF*delay);
+           end
+           for l = 38:64
+                arr(l-12,k) = exp(2*pi*-1i*l*deltaF*delay);
+           end
+end
 r1 = reshape(r,[80,N]).';
 %Removing cyclic prefix 
 r_Parallel1 = r1(:,(Ncp + 1:(64 + Ncp))); 
@@ -162,6 +170,7 @@ r_Time(4,:) = sqrt(Nst)/ 64*(fft(r_Parallel1(4,:)));
 %r_Time = sqrt(Nst)/ 64*(fft(r_Parallel(2,:)));
 %Extracting the data carriers from the FFT output 
 R_Freq1 = r_Time(:,[( 2: Nst/ 2 + 1) (Nst/ 2 + 13: Nst + 12)]).';
+R_Freq1 = arr.*R_Freq1;
 %s1 = circshift(s,1);
 CSI(:,1)= R_Freq1(:,1)./s.';
 CSI(:,2)= R_Freq1(:,2)./s.';
@@ -187,7 +196,7 @@ CSI = reshape(CSI,1,[]);
 %   Noise Subspace
     Pn = V(:,1+M:N)*V(:,1+M:N)';
     theta1=[0:90];
-    tau=[0:1e-9:1e-8];
+    tau=[0:1e-9:1e-6];
     %for l = 1:52
     % D(:,l) = l*deltaF;                
     % A = exp(-1i*2*pi*fc*tau(j));
@@ -203,13 +212,16 @@ CSI = reshape(CSI,1,[]);
         end
         B = B.';
        for j=1:length(tau)
-           for l = 1:52
-                A(:,l) = exp(2*pi*-1i*l*deltaF*tau(j)).';
+           for l = 1:26
+                A(:,l) = exp(2*pi*-1i*l*deltaF*tau(j));
+           end
+           for l = 38:64
+                A(:,l-12) = exp(2*pi*-1i*l*deltaF*tau(j));
            end
             A1 = kron(B,A)';
 %           PMUSIC(i,j) = real(A1'*A1)/real(A1'*Pn*A1);
 %            PMUSIC(i,j)= ((A1*Pn).^2);
-             PMUSIC(i,j)= 1/abs((A1'*Pn*A1));
+             PMUSIC(i,j)= 1./(sum(abs(A1'*Pn*A1)));
        end
     end
     
@@ -237,14 +249,3 @@ CSI = reshape(CSI,1,[]);
     
     degrees = deg;
     delay = del;
-
-% %BPSK demodulation / Constellation Demapper.Force + ve value --> 1, -ve value --> -1 
-% R_Freq( R_Freq > 0) = + 1; 
-% R_Freq( R_Freq < 0) = -1; 
-% s_cap = R_Freq; 
-% numErrors = sum( abs( s_cap-s)/ 2); %Count number of errors 
-% R_Freq( R_Freq < 0) = 0
-% s(s < 0) = 0;
-% [numErrors, ber] = biterr(s, R_Freq);
-% fprintf('\nThe bit error rate = %5.2e, based on %d errors\n', ...
-%     ber, numErrors)
